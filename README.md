@@ -29,7 +29,7 @@ TOKEN="你的discord機器人token"
 python bot.py
 ```
 ### 5. 開始使用：
-**在 Discord 內使用 /help_music 來獲取指令相關說明並開始使用**
+**在 Discord 內使用`/help_music` 來獲取指令相關說明並開始使用**
 
 ## 其他小功能
 -   發起活動邀請訊息 `/create_event`
