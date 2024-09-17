@@ -22,7 +22,7 @@ async def delete_after_delay(interaction: discord.Interaction, delay: int):
         pass  # 忽略已經被刪除的消息
 
 def extract_video_id(url):
-    """提取 YouTube 視頻的唯一 ID"""
+    """提取 url 的唯一 ID"""
     pattern = r'(?:v=|\/)([0-9A-Za-z_-]{11}).*'
     match = re.search(pattern, url)
     return match.group(1) if match else url
@@ -41,7 +41,7 @@ def get_file_path(video_id, title=None):
         return None
         
 def youtube_dl_process(playlist_url, ydl_opts, legnth):
-    """處理 YoutubeDL 播放清單請求並格式化信息"""
+    """處理 YoutubeDL 播放清單請求並格式化資訊"""
     try:
         # 使用 yt-dlp 提取播放清單中的所有影片 URL
         with YoutubeDL(ydl_opts) as ydl:
@@ -61,7 +61,7 @@ def youtube_dl_process(playlist_url, ydl_opts, legnth):
                 else:
                     video_urls = [video['url'] for video in info_dict['entries'][:legnth]]
                     
-        # 處理並獲取格式化的音樂信息
+        # 處理並獲取格式化的音樂資訊
         formatted_infos = fetch_infos_concurrently_sync(video_urls)
         
         return formatted_infos
@@ -85,7 +85,7 @@ def fetch_infos_concurrently_sync(video_urls):
     return formatted_infos
 
 def fetch_detailed_music_info_noerror(video_id):
-    """獲取音樂的詳細信息，如標題、上傳者和縮圖等，遇到例外情況將不會終止主線路(用於一次獲取大量音樂資訊)"""
+    """獲取音樂的詳細資訊，如標題、上傳者和縮圖等，遇到例外情況將不會終止主線路(用於一次獲取大量音樂資訊)"""
     ydl_opts = {
         'format': 'bestaudio/best',
         'quiet': True
@@ -97,7 +97,7 @@ def fetch_detailed_music_info_noerror(video_id):
     except Exception:
         return
     
-    # 返回詳細信息，例如標題、上傳者和縮圖
+    # 返回詳細資訊，例如標題、上傳者和縮圖
     print(f"\033[33mReturn the info of {info['title']}\033[0m")
     return {
         'id': info.get('id'),
@@ -112,7 +112,7 @@ def fetch_detailed_music_info_noerror(video_id):
     }
     
 def download_from_youtube(video_id):
-    """獲取音樂的詳細信息，如標題、上傳者和縮圖等，並下載音樂"""
+    """獲取音樂的詳細資訊，如標題、上傳者和縮圖等，並下載音樂"""
     # 設定下載選項
     ydl_opts = {
         'format': 'bestaudio/best',
@@ -161,7 +161,7 @@ def download_from_youtube(video_id):
     return new_file_path, song_info
 
 def fetch_detailed_music_info(video_id):
-    """獲取音樂的詳細信息，如標題、上傳者和縮圖等。"""
+    """獲取音樂的詳細資訊，如標題、上傳者和縮圖等。"""
     ydl_opts = {
         'format': 'bestaudio/best',
         'quiet': True
@@ -174,7 +174,7 @@ def fetch_detailed_music_info(video_id):
         # 錯誤訊息以str形式回傳，以防型態不可分割問題
         return f"{e}"
     
-    # 返回詳細信息，例如標題、上傳者和縮圖
+    # 返回詳細資訊，例如標題、上傳者和縮圖
     print(f"\033[33mReturn the info of {info['title']}\033[0m")
     return {
         'id': info.get('id'),
@@ -199,10 +199,10 @@ def truncate_song_title(title, max_length=50):
 
 def calculate_average_volume(file_path):
     """計算一首歌的平均分貝"""
-    # 加載音頻文件
+    # 讀取音樂
     audio = AudioSegment.from_file(file_path)
 
-    # 計算音頻文件的分貝 (dBFS)
+    # 計算的音樂的分貝 (dBFS)
     avg_volume = audio.dBFS
 
     return avg_volume
@@ -211,9 +211,35 @@ class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.queue_dict = {}  # 音樂佇列
-        self.current_song_info = {}  # 當前播放音樂信息
+        self.current_song_info = {}  # 當前播放音樂資訊
+        self.config_file = "data/music_config.json"
+        
+        # 預設值
         self.delete_after = 30
-    
+        self.music_volume = -30
+        
+        self.load_config()
+        
+    def load_config(self):
+        """讀取music_config的資料"""
+        if os.path.exists(self.config_file):
+            with open(self.config_file, 'r') as f:
+                config = json.load(f)
+                self.delete_after = config.get("delete_after", self.delete_after)
+                self.music_volume = config.get("music_volume", self.music_volume)
+        else:
+            # 檔案不存在，使用預設值並儲存
+            self.save_config()
+
+    def save_config(self):
+        """保存當前配置到music_config"""
+        config = {
+            "delete_after": self.delete_after,
+            "music_volume": self.music_volume
+        }
+        with open(self.config_file, 'w') as f:
+            json.dump(config, f, indent=4)
+            
     def load_playlists(self):
         """讀取user_playlist_file的資料"""
         user_playlist_file  = 'data/user_playlists.json'
@@ -269,7 +295,7 @@ class Music(commands.Cog):
 
         # 如果文件不存在，則下載並儲存
         if not file_path:
-            # 下載音樂並得到詳細的音樂信息
+            # 下載音樂並得到詳細的音樂資訊
             # 使用 ProcessPoolExecutor 來執行多進程操作，來降低IO對主進程影響
             loop = asyncio.get_running_loop()
             with concurrent.futures.ProcessPoolExecutor() as executor:
@@ -283,7 +309,7 @@ class Music(commands.Cog):
             
             file_path, self.current_song_info[guild_id] = info
         else:
-            # 獲取詳細的音樂信息，但不下載
+            # 獲取詳細的音樂資訊，但不下載
             # 使用 ProcessPoolExecutor 來執行多進程操作，來降低IO對主進程影響
             loop = asyncio.get_running_loop()
             with concurrent.futures.ProcessPoolExecutor() as executor:
@@ -302,11 +328,10 @@ class Music(commands.Cog):
         # 將discord狀態切換成現在播放音樂名稱
         await self.bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name=title))
         
-        # 計算音頻的平均音量
+        # 計算音樂的平均音量
         avg_volume = calculate_average_volume(file_path)
-        # 調整音量 (將平均音量調整為-30dBFS)
-        target_volume = -30
-        volume_adjustment = target_volume - avg_volume
+        # 調整音量 (將平均音量調整為music_volume dBFS)
+        volume_adjustment = self.music_volume - avg_volume
         
         # 播放音樂文件
         source = FFmpegPCMAudio(file_path, options=f"-filter:a 'volume={volume_adjustment}dB'")  # 設定音量過濾器
@@ -328,6 +353,34 @@ class Music(commands.Cog):
             print(f"\033[31m播放錯誤: {error}\033[0m")
         
         await self.play_next(interaction)
+        
+    @app_commands.command(name="set_config", description="設定音樂機器人的配置")
+    @app_commands.describe(delete_after="設置刪除訊息延遲時間(範圍10~600 秒)", music_volume="設置音量大小(範圍-60~0 dB)")
+    async def set_config(self, interaction: discord.Interaction, delete_after: int = None, music_volume: int = None):
+        """設置音樂機器人的配置"""
+        # 檢查範圍
+        if delete_after is not None:
+            if 10 <= delete_after <= 600:
+                self.delete_after = delete_after
+            else:
+                await interaction.response.send_message("`delete_after` 必須在 10 到 600 秒之間。", ephemeral=True)
+                return
+
+        if music_volume is not None:
+            if -60 <= music_volume <= 0:
+                self.music_volume = music_volume
+            else:
+                await interaction.response.send_message("`music_volume` 必須在 -60 到 0 dB 之間。", ephemeral=True)
+                return
+
+        # 保存
+        self.save_config()
+        
+        await interaction.response.send_message(
+            f"配置已更新：\n"
+            f"訊息刪除延遲: {self.delete_after} 秒\n"
+            f"音樂音量: {self.music_volume} dB", ephemeral=True
+        )
         
     @app_commands.command(name="join", description="將機器人加到你現在的頻道")
     async def join(self, interaction: discord.Interaction):
@@ -798,7 +851,7 @@ class Music(commands.Cog):
             return
         
         ydl_opts = {
-            'extract_flat': 'in_playlist',  # 僅提取播放清單中的視頻信息
+            'extract_flat': 'in_playlist',  # 僅提取播放清單中的影片資訊
             'quiet': True,
         }
         
@@ -900,6 +953,7 @@ class Music(commands.Cog):
         embed.set_thumbnail(url=interaction.user.avatar.url if interaction.user.avatar else interaction.user.default_avatar.url)
         
         add_command_field(embed, "/help_music", "展示這個指令說明。")
+        add_command_field(embed, "/set_config [music_volume] [delete_after]", "設定音樂機器人的配置")
         add_command_field(embed, "/join", "將機器人加到你現在的頻道。")
         add_command_field(embed, "/leave", "使機器人離開當前頻道。")
         add_command_field(embed, "/play [url]", "播放音樂或將音樂加入佇列。")
