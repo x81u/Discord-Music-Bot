@@ -212,34 +212,29 @@ class Music(commands.Cog):
         self.bot = bot
         self.queue_dict = {}  # 音樂佇列
         self.current_song_info = {}  # 當前播放音樂資訊
-        self.config_file = "data/music_config.json"
+        self.music_config = {}
         
-        # 預設值
-        self.delete_after = 30
-        self.music_volume = -30
-        
-        self.load_config()
-        
-    def load_config(self):
+    def load_music_config(self):
         """讀取music_config的資料"""
-        if os.path.exists(self.config_file):
-            with open(self.config_file, 'r') as f:
-                config = json.load(f)
-                self.delete_after = config.get("delete_after", self.delete_after)
-                self.music_volume = config.get("music_volume", self.music_volume)
-        else:
-            # 檔案不存在，使用預設值並儲存
-            self.save_config()
+        music_config_file = 'data/music_config.json'
+        if os.path.exists(music_config_file):
+            with open('data/music_config.json', 'r') as f:
+                return json.load(f)
+        return {}
 
-    def save_config(self):
+    def save_music_config(self):
         """保存當前配置到music_config"""
-        config = {
-            "delete_after": self.delete_after,
-            "music_volume": self.music_volume
-        }
-        with open(self.config_file, 'w') as f:
-            json.dump(config, f, indent=4)
-            
+        music_config_file = 'data/music_config.json'
+        # 建立data資料夾
+        os.makedirs('data', exist_ok=True)
+        with open(music_config_file, 'w') as f:
+            json.dump(self.music_config, f, indent=4)
+
+    def get_music_config(self, guild_id):
+        """獲取當前music_config"""
+        # 預設為delete_after: 30, music_volume: -30
+        return self.music_config.get(guild_id, {"delete_after": 30, "music_volume": -30}) 
+
     def load_playlists(self):
         """讀取user_playlist_file的資料"""
         user_playlist_file  = 'data/user_playlists.json'
@@ -264,26 +259,22 @@ class Music(commands.Cog):
         
     def get_queue_len(self, guild_id):
         """得到目前queue長度"""
-        if guild_id not in self.queue_dict:
-            return 0
-        else:
-            return len(self.queue_dict[guild_id])
+        return len(self.queue_dict.get(guild_id, {}))
     
     def get_current_song_info(self, guild_id):
-        if guild_id not in self.current_song_info:
-            return None
-        else:
-            return self.current_song_info[guild_id]
+        """獲取當前歌曲資訊"""
+        return self.current_song_info.get(guild_id, None)
         
     async def play_next(self, interaction: discord.Interaction):
         """播放佇列中的下一首音樂"""
         # 當佇列沒有音樂時
         guild_id = str(interaction.guild.id)
+        guild_config = self.get_music_config(guild_id)
         if self.get_queue_len(guild_id) == 0:
             # 切換狀態回非播放音樂狀態
             self.current_song_info[guild_id] = None
             await self.bot.change_presence(activity=discord.Game(name="原神"))
-            await interaction.channel.send("佇列中沒有更多歌曲。", silent=True, delete_after=self.delete_after)
+            await interaction.channel.send("佇列中沒有更多歌曲。", silent=True, delete_after=guild_config['delete_after'])
             return
 
         # 從佇列中取得下一首歌曲並提取 {video_id}+{title}
@@ -304,7 +295,7 @@ class Music(commands.Cog):
             
             # 錯誤訊息以str形式回傳，以防型態不可分割問題
             if type(info) is str:
-                await interaction.channel.send(f"無法從 YouTube 匯入歌曲：{info}", silent=True, delete_after=self.delete_after)
+                await interaction.channel.send(f"無法從 YouTube 匯入歌曲：{info}", silent=True, delete_after=guild_config['delete_after'])
                 return
             
             file_path, self.current_song_info[guild_id] = info
@@ -318,7 +309,7 @@ class Music(commands.Cog):
             
             # 錯誤訊息以str形式回傳，以防型態不可分割問題
             if type(info) is str:
-                await interaction.channel.send(f"無法從 YouTube 匯入歌曲：{info}", silent=True, delete_after=self.delete_after)
+                await interaction.channel.send(f"無法從 YouTube 匯入歌曲：{info}", silent=True, delete_after=guild_config['delete_after'])
                 return
             
             self.current_song_info[guild_id] = await future
@@ -331,7 +322,7 @@ class Music(commands.Cog):
         # 計算音樂的平均音量
         avg_volume = calculate_average_volume(file_path)
         # 調整音量 (將平均音量調整為music_volume dBFS)
-        volume_adjustment = self.music_volume - avg_volume
+        volume_adjustment = guild_config['music_volume'] - avg_volume
         
         # 播放音樂文件
         source = FFmpegPCMAudio(file_path, options=f"-filter:a 'volume={volume_adjustment}dB'")  # 設定音量過濾器
@@ -340,12 +331,12 @@ class Music(commands.Cog):
         if voice_client and voice_client.is_connected():
             voice_client.play(source, after=lambda e: self.bot.loop.create_task(self.on_music_end(interaction, e)))
             embed = self.create_current_embed(guild_id)
-            await interaction.channel.send(embed=embed, delete_after=self.delete_after, silent=True)
+            await interaction.channel.send(embed=embed, delete_after=guild_config['delete_after'], silent=True)
         else:
             # 切換狀態回非播放音樂狀態
             self.current_song_info[guild_id] = None
             await self.bot.change_presence(activity=discord.Game(name="原神"))
-            await interaction.channel.send("無法播放音樂，語音客戶端未連接到語音頻道。", silent=True, delete_after=self.delete_after)
+            await interaction.channel.send("無法播放音樂，語音客戶端未連接到語音頻道。", silent=True, delete_after=guild_config['delete_after'])
 
     async def on_music_end(self, interaction, error):
         """當音樂結束播放時的回調函數"""
@@ -358,33 +349,36 @@ class Music(commands.Cog):
     @app_commands.describe(delete_after="設置刪除訊息延遲時間(範圍10~600 秒)", music_volume="設置音量大小(範圍-60~0 dB)")
     async def set_config(self, interaction: discord.Interaction, delete_after: int = None, music_volume: int = None):
         """設置音樂機器人的配置"""
+        guild_id = str(interaction.guild.id)
+        guild_config = self.get_music_config(guild_id)
         # 檢查範圍
         if delete_after is not None:
             if 10 <= delete_after <= 600:
-                self.delete_after = delete_after
+                guild_config["delete_after"] = delete_after
             else:
-                await interaction.response.send_message("`delete_after` 必須在 10 到 600 秒之間。", ephemeral=True)
+                await interaction.response.send_message("`delete_after` 的範圍必須在 10 到 600 秒之間。", ephemeral=True)
                 return
-
+        
         if music_volume is not None:
             if -60 <= music_volume <= 0:
-                self.music_volume = music_volume
+                guild_config["music_volume"] = music_volume
             else:
-                await interaction.response.send_message("`music_volume` 必須在 -60 到 0 dB 之間。", ephemeral=True)
+                await interaction.response.send_message("`music_volume` 的範圍必須在 -60 到 0 分貝之間。", ephemeral=True)
                 return
 
-        # 保存
-        self.save_config()
+        # 更新配置並保存
+        self.music_config[str(guild_id)] = guild_config
+        self.save_music_config()
         
         await interaction.response.send_message(
-            f"配置已更新：\n"
-            f"訊息刪除延遲: {self.delete_after} 秒\n"
-            f"音樂音量: {self.music_volume} dB", ephemeral=True
+            "配置已更新：\n訊息刪除延遲: {} 秒\n音樂音量: {} dB".format(guild_config["delete_after"],guild_config["music_volume"]), ephemeral=True
         )
         
     @app_commands.command(name="join", description="將機器人加到你現在的頻道")
     async def join(self, interaction: discord.Interaction):
         """將機器人加到你現在的頻道"""
+        guild_id = str(interaction.guild.id)
+        guild_config = self.get_music_config(guild_id)
         if interaction.user.voice:
             channel = interaction.user.voice.channel
             if interaction.guild.voice_client is None:
@@ -393,32 +387,34 @@ class Music(commands.Cog):
                 await interaction.guild.voice_client.move_to(channel)
             await interaction.response.send_message("機器人已加入頻道。", ephemeral=True)
             # 若是機器人因為某原因而離開頻道(被踢掉或/leave)，可能queue_dict還有殘留音樂
-            guild_id = str(interaction.guild.id)
             if self.get_queue_len(guild_id) != 0:
                 await self.play_next(interaction)
         else:
             await interaction.response.send_message("你需要在語音頻道中！", ephemeral=True)
-        await delete_after_delay(interaction, self.delete_after)
+        await delete_after_delay(interaction, guild_config['delete_after'])
 
     @app_commands.command(name="leave", description="使機器人離開當前頻道")
     async def leave(self, interaction: discord.Interaction):
+        guild_id = str(interaction.guild.id)
+        guild_config = self.get_music_config(guild_id)
         """使機器人離開當前頻道"""
         if interaction.guild.voice_client:
             await interaction.guild.voice_client.disconnect()
             await interaction.response.send_message("機器人已離開頻道。", ephemeral=True)
         else:
             await interaction.response.send_message("機器人不在任何語音頻道中。", ephemeral=True)
-        await delete_after_delay(interaction, self.delete_after)
+        await delete_after_delay(interaction, guild_config['delete_after'])
 
     @app_commands.command(name="play", description="播放音樂或將音樂加入佇列")
     @app_commands.describe(url="'一首'歌曲的網址")
     async def play(self, interaction: discord.Interaction, url: str):
         """播放音樂或將音樂加入佇列"""
-
+        guild_id = str(interaction.guild.id)
+        guild_config = self.get_music_config(guild_id)
         # 檢查使用者是否在語音頻道
         if interaction.user.voice is None:
             await interaction.response.send_message("請先加入一個語音頻道！", ephemeral=True, silent=True)
-            await delete_after_delay(interaction, self.delete_after)
+            await delete_after_delay(interaction, guild_config['delete_after'])
             return
 
         # 取得語音頻道並連接
@@ -440,12 +436,11 @@ class Music(commands.Cog):
         # 錯誤訊息以str形式回傳，以防型態不可分割問題
         if type(info) is str:
             await interaction.followup.send(f"無法從 YouTube 匯入歌曲：{info}", silent=True)
-            await delete_after_delay(interaction, self.delete_after)
+            await delete_after_delay(interaction, guild_config['delete_after'])
             return
 
         # 將 {video_id}+{title} 加入佇列
         formatted_info = f"{info['id']}+{info['title']}"
-        guild_id = str(interaction.guild.id)
         self.append_queue_dict(guild_id, formatted_info)
         await interaction.followup.send(f"歌曲已加入佇列。當前佇列長度：{self.get_queue_len(guild_id)}", silent=True)
 
@@ -453,10 +448,11 @@ class Music(commands.Cog):
         if not self.get_current_song_info(guild_id):
             await self.play_next(interaction)
         
-        await delete_after_delay(interaction, self.delete_after)
+        await delete_after_delay(interaction, guild_config['delete_after'])
 
     def create_current_embed(self, guild_id):
         """回傳當前播放的音樂embed(play_next, current)"""
+        guild_config = self.get_music_config(guild_id)
         # 創建 Discord embed
         song_info = self.get_current_song_info(guild_id)
         embed = discord.Embed(
@@ -476,7 +472,7 @@ class Music(commands.Cog):
         embed.add_field(name="🔥 播放量", value=f"**{song_info['view_count']:,}**", inline=True)
         embed.add_field(name="👍 按讚數", value=f"**{song_info['like_count']:,}**", inline=True)
         
-        embed.set_footer(text=f"資訊只會展示{self.delete_after}秒\n輸入/current 可重新展示")
+        embed.set_footer(text=f"資訊只會展示{guild_config['delete_after']}秒\n輸入/current 可重新展示")
         
         return embed
         
@@ -484,12 +480,13 @@ class Music(commands.Cog):
     async def current(self, interaction: discord.Interaction):
         """顯示當前播放的音樂"""
         guild_id = str(interaction.guild.id)
+        guild_config = self.get_music_config(guild_id)
         if self.get_current_song_info(guild_id):
             embed = self.create_current_embed(guild_id)
-            await interaction.response.send_message(embed=embed, delete_after=self.delete_after, silent=True)
+            await interaction.response.send_message(embed=embed, delete_after=guild_config['delete_after'], silent=True)
         else:
-            await interaction.response.send_message("目前沒有正在播放的音樂。", delete_after=self.delete_after, silent=True)
-        await delete_after_delay(interaction, self.delete_after)
+            await interaction.response.send_message("目前沒有正在播放的音樂。", delete_after=guild_config['delete_after'], silent=True)
+        await delete_after_delay(interaction, guild_config['delete_after'])
 
     def queue_embeds(self, interaction: discord.Interaction):
         """回傳queue中的所有歌曲之embed集合(queue_show, queue_shuffle)"""
@@ -518,63 +515,73 @@ class Music(commands.Cog):
     async def queue_show(self, interaction: discord.Interaction):
         """顯示當前佇列中的所有音樂"""
         guild_id = str(interaction.guild.id)
+        guild_config = self.get_music_config(guild_id)
         if self.get_queue_len(guild_id) > 0:
             embeds = self.queue_embeds(interaction)
             # 發送嵌入
-            view = PageView(embeds, interaction.user, self.delete_after)
+            view = PageView(embeds, interaction.user, guild_config['delete_after'])
             await interaction.response.send_message(embed=embeds[0], view=view, silent=True)
         else:
             await interaction.response.send_message("目前佇列中沒有音樂。", silent=True)
-        await delete_after_delay(interaction, self.delete_after)
+        await delete_after_delay(interaction, guild_config['delete_after'])
             
     @app_commands.command(name="queue_shuffle", description="打亂目前佇列中的音樂順序")
     async def queue_shuffle(self, interaction: discord.Interaction):
         """打亂目前佇列中的音樂順序"""
         guild_id = str(interaction.guild.id)
+        guild_config = self.get_music_config(guild_id)
         if self.get_queue_len(guild_id) > 0:
             random.shuffle(self.queue_dict[guild_id])
             await interaction.response.send_message(f"已打亂目前佇列中的音樂順序。", silent=True)
             # 發送嵌入
             embeds = self.queue_embeds(interaction)
-            view = PageView(embeds, interaction.user, self.delete_after)
-            await interaction.channel.send(embed=embeds[0], view=view, silent=True, delete_after=self.delete_after)
+            view = PageView(embeds, interaction.user, guild_config['delete_after'])
+            await interaction.channel.send(embed=embeds[0], view=view, silent=True, delete_after=guild_config['delete_after'])
         else:
             await interaction.response.send_message("目前佇列中沒有音樂。", silent=True)
-        await delete_after_delay(interaction, self.delete_after)
+        await delete_after_delay(interaction, guild_config['delete_after'])
 
     @app_commands.command(name="skip", description="跳過當前歌曲，播放佇列中的下一首歌曲")
     async def skip(self, interaction: discord.Interaction):
         """跳過當前歌曲，播放佇列中的下一首歌曲"""
+        guild_id = str(interaction.guild.id)
+        guild_config = self.get_music_config(guild_id)
         if interaction.guild.voice_client and interaction.guild.voice_client.is_playing():
             interaction.guild.voice_client.stop()
             await interaction.response.send_message("跳過當前歌曲。", silent=True)
         else:
             await interaction.response.send_message("目前沒有播放的音樂。", silent=True)
-        await delete_after_delay(interaction, self.delete_after)
+        await delete_after_delay(interaction, guild_config['delete_after'])
         
     @app_commands.command(name="pause", description="暫停音樂")
     async def pause(self, interaction: discord.Interaction):
         """暫停音樂"""
+        guild_id = str(interaction.guild.id)
+        guild_config = self.get_music_config(guild_id)
         if interaction.guild.voice_client and interaction.guild.voice_client.is_playing():
             interaction.guild.voice_client.pause()
             await interaction.response.send_message("音樂已暫停。", silent=True)
         else:
             await interaction.response.send_message("目前沒有音樂播放。", silent=True)
-        await delete_after_delay(interaction, self.delete_after)
+        await delete_after_delay(interaction, guild_config['delete_after'])
 
     @app_commands.command(name="resume", description="恢復播放音樂")
     async def resume(self, interaction: discord.Interaction):
         """恢復播放音樂"""
+        guild_id = str(interaction.guild.id)
+        guild_config = self.get_music_config(guild_id)
         if interaction.guild.voice_client and interaction.guild.voice_client.is_paused():
             interaction.guild.voice_client.resume()
             await interaction.response.send_message("音樂已恢復播放。", silent=True)
         else:
             await interaction.response.send_message("音樂目前不是暫停狀態。", silent=True)
-        await delete_after_delay(interaction, self.delete_after)
+        await delete_after_delay(interaction, guild_config['delete_after'])
 
     @app_commands.command(name="stop", description="停止播放所有音樂，並清空佇列")
     async def stop(self, interaction: discord.Interaction):
         """停止播放所有音樂，並清空佇列"""
+        guild_id = str(interaction.guild.id)
+        guild_config = self.get_music_config(guild_id)
         if interaction.guild.voice_client and interaction.guild.voice_client.is_playing():
             guild_id = str(interaction.guild.id)
             self.queue_dict[guild_id] = []
@@ -583,7 +590,7 @@ class Music(commands.Cog):
             await interaction.response.send_message("音樂已停止播放。", silent=True)
         else:
             await interaction.response.send_message("目前沒有音樂播放。", silent=True)
-        await delete_after_delay(interaction, self.delete_after)
+        await delete_after_delay(interaction, guild_config['delete_after'])
 
     async def playlist_autocomplete(self, interaction: discord.Interaction, current: str):
         """根據指定的用戶或默認指令輸入者動態列出歌單名稱(@app_commands.autocomplete(playlist_name=playlist_autocomplete))"""
@@ -604,6 +611,8 @@ class Music(commands.Cog):
     @app_commands.autocomplete(playlist_name=playlist_autocomplete)
     async def playlist_add(self, interaction: discord.Interaction, playlist_name: str, url: str):
         """將歌曲添加到用戶歌單"""
+        guild_id = str(interaction.guild.id)
+        guild_config = self.get_music_config(guild_id)
         await interaction.response.defer(ephemeral=True)
         playlists = self.load_playlists()
         user_id = str(interaction.user.id)
@@ -624,7 +633,7 @@ class Music(commands.Cog):
         # 錯誤訊息以str形式回傳，以防型態不可分割問題
         if type(info) is str:
             await interaction.followup.send(f"無法從 YouTube 匯入歌曲：{info}", ephemeral=True, silent=True)
-            await delete_after_delay(interaction, self.delete_after)
+            await delete_after_delay(interaction, guild_config['delete_after'])
             return
         
         formatted_info = f"{info['id']}+{info['title']}"
@@ -635,20 +644,22 @@ class Music(commands.Cog):
             await interaction.followup.send(f"歌曲`{info['title']}`已加入到歌單 `{playlist_name}`。", ephemeral=True, silent=True)
         else:
             await interaction.followup.send(f"歌曲`{info['title']}`已存在於歌單 `{playlist_name}`。", ephemeral=True, silent=True)
-        await delete_after_delay(interaction, self.delete_after)
+        await delete_after_delay(interaction, guild_config['delete_after'])
             
     @app_commands.command(name="playlist_remove", description="從用戶歌單中移除歌曲，使用索引")
     @app_commands.describe(playlist_name="歌單名稱", index="欲移除歌曲在歌單中的索引(第x首)")
     @app_commands.autocomplete(playlist_name=playlist_autocomplete)
     async def playlist_remove(self, interaction: discord.Interaction, playlist_name: str, index: int):
         """從用戶歌單中移除歌曲，使用索引"""
+        guild_id = str(interaction.guild.id)
+        guild_config = self.get_music_config(guild_id)
         playlists = self.load_playlists()
         user_id = str(interaction.user.id)
         
         # 檢查歌單是否存在
         if user_id not in playlists or playlist_name not in playlists[user_id]:
             await interaction.response.send_message(f"歌單 `{playlist_name}` 不存在。", ephemeral=True, silent=True)
-            await delete_after_delay(interaction, self.delete_after)
+            await delete_after_delay(interaction, guild_config['delete_after'])
             return
 
         songs = playlists[user_id][playlist_name]
@@ -663,7 +674,7 @@ class Music(commands.Cog):
             await interaction.response.send_message(f"已從歌單 `{playlist_name}` 移除：{removed_song.split('+', 1)[1]}", ephemeral=True, silent=True)
         else:
             await interaction.response.send_message(f"索引 `{index}` 無效。", ephemeral=True, silent=True)
-        await delete_after_delay(interaction, self.delete_after)
+        await delete_after_delay(interaction, guild_config['delete_after'])
     
     def clear_playlist(self, user_id, playlist_name):
         """移除指定用戶的歌單(playlist_clear)"""
@@ -689,6 +700,8 @@ class Music(commands.Cog):
     @app_commands.autocomplete(playlist_name=playlist_autocomplete)
     async def playlist_clear(self, interaction: discord.Interaction, playlist_name: str):
         """清除用戶的指定歌單。"""
+        guild_id = str(interaction.guild.id)
+        guild_config = self.get_music_config(guild_id)
         user_id = str(interaction.user.id)
         
         # 調用刪除歌單函數
@@ -696,13 +709,15 @@ class Music(commands.Cog):
             await interaction.response.send_message(f"歌單 `{playlist_name}` 已成功清除。", ephemeral=True, silent=True)
         else:
             await interaction.response.send_message(f"未能找到或清除歌單 `{playlist_name}`。", ephemeral=True, silent=True)
-        await delete_after_delay(interaction, self.delete_after)
+        await delete_after_delay(interaction, guild_config['delete_after'])
         
     @app_commands.command(name="playlist_show", description="展示用戶的歌單")
     @app_commands.describe(user="用戶", playlist_name="歌單名稱")
     @app_commands.autocomplete(playlist_name=playlist_autocomplete)
     async def playlist_show(self, interaction: discord.Interaction, user: discord.User = None, playlist_name: str = None):
         """展示用戶的歌單"""
+        guild_id = str(interaction.guild.id)
+        guild_config = self.get_music_config(guild_id)
         # 預設用戶為自己
         if user is None:
             user = interaction.user
@@ -713,7 +728,7 @@ class Music(commands.Cog):
         # 檢查歌酖是否存在
         if user_id not in playlists or (playlist_name and playlist_name not in playlists[user_id]):
             await interaction.response.send_message(f"該用戶 `{user}` 沒有歌單 `{playlist_name}`。", silent=True)
-            await delete_after_delay(interaction, self.delete_after)
+            await delete_after_delay(interaction, guild_config['delete_after'])
             return
         
         chunk_size = 10  # 每個嵌入中顯示的最大歌曲數量
@@ -740,7 +755,7 @@ class Music(commands.Cog):
                     embeds.append(embed)
 
                 # 發送嵌入
-                view = PageView(embeds, interaction.user, self.delete_after)
+                view = PageView(embeds, interaction.user, guild_config['delete_after'])
                 await interaction.response.send_message(embed=embeds[0], view=view, silent=True)
             else:
                 await interaction.response.send_message(f"用戶 `{user}` 的歌單 `{playlist_name}` 是空的。", silent=True)
@@ -766,17 +781,19 @@ class Music(commands.Cog):
                     embeds.append(embed)
 
                 # 發送嵌入
-                view = PageView(embeds, interaction.user, self.delete_after)
+                view = PageView(embeds, interaction.user, guild_config['delete_after'])
                 await interaction.response.send_message(embed=embeds[0], view=view, silent=True)
             else:
                 await interaction.response.send_message(f"用戶 `{user}` 沒有任何歌單。", silent=True)
-        await delete_after_delay(interaction, self.delete_after)
+        await delete_after_delay(interaction, guild_config['delete_after'])
                 
     @app_commands.command(name="playlist_play", description="播放用戶的歌單")
     @app_commands.describe(playlist_name="歌單名稱", user="用戶")
     @app_commands.autocomplete(playlist_name=playlist_autocomplete)
     async def playlist_play(self, interaction: discord.Interaction, user: discord.User = None, playlist_name: str = None):
         """播放用戶的歌單"""
+        guild_id = str(interaction.guild.id)
+        guild_config = self.get_music_config(guild_id)
         playlists = self.load_playlists()
         # 預設用戶為自己
         if user is None:
@@ -788,13 +805,13 @@ class Music(commands.Cog):
         if playlist_name:
             if playlist_name not in playlists[user_id]:
                 await interaction.response.send_message(f"用戶 `{user}` 的歌單 `{playlist_name}` 不存在。", ephemeral=True)
-                await delete_after_delay(interaction, self.delete_after)
+                await delete_after_delay(interaction, guild_config['delete_after'])
                 return
 
             song_urls = playlists[user_id][playlist_name]
             if not song_urls:
                 await interaction.response.send_message(f"用戶 `{user}` 的歌單 `{playlist_name}` 是空的。", ephemeral=True)
-                await delete_after_delay(interaction, self.delete_after)
+                await delete_after_delay(interaction, guild_config['delete_after'])
                 return
         else:
             # 如果沒有指定 playlist_name，則將所有歌單中的歌曲加入佇列
@@ -808,13 +825,13 @@ class Music(commands.Cog):
             
             if not song_urls:
                 await interaction.response.send_message(f"用戶 `{user}` 的所有歌單都沒有歌曲。", ephemeral=True)
-                await delete_after_delay(interaction, self.delete_after)
+                await delete_after_delay(interaction, guild_config['delete_after'])
                 return
         
         # 檢查使用者是否在語音頻道
         if interaction.user.voice is None:
             await interaction.response.send_message("請先加入一個語音頻道！", ephemeral=True, silent=True)
-            await delete_after_delay(interaction, self.delete_after)
+            await delete_after_delay(interaction, guild_config['delete_after'])
             return
 
         # 取得語音頻道並連接
@@ -828,7 +845,6 @@ class Music(commands.Cog):
         # 隨機打亂歌單順序
         random.shuffle(song_urls)
         # 添加歌單中的所有歌曲到佇列
-        guild_id = str(interaction.guild.id)
         for url in song_urls:
             self.append_queue_dict(guild_id, url)
         
@@ -837,17 +853,18 @@ class Music(commands.Cog):
         if not self.get_current_song_info(guild_id):
             await self.play_next(interaction)
         
-        await delete_after_delay(interaction, self.delete_after)
+        await delete_after_delay(interaction, guild_config['delete_after'])
             
     @app_commands.command(name="playlist_import", description="從YouTube播放清單匯入所有(或是[legnth]首)歌曲至指定歌單")
     @app_commands.describe(playlist_url="欲匯入的播放清單網址", playlist_name="歌單名稱(輸入不存在歌單時，將會自動建立新歌單)", length="匯入x首歌(範圍1~200)")
     @app_commands.autocomplete(playlist_name=playlist_autocomplete)
     async def playlist_import(self, interaction: discord.Interaction, playlist_url: str, playlist_name: str, length: int = None):
         """從YouTube播放清單匯入所有(或是[legnth]首)歌曲至指定歌單"""
-        
+        guild_id = str(interaction.guild.id)
+        guild_config = self.get_music_config(guild_id)
         if length != None and (length < 1 or length > 200):
             await interaction.response.send_message(f"[length] 的範圍僅限於1~200", ephemeral=True, silent=True)
-            await delete_after_delay(interaction, self.delete_after)
+            await delete_after_delay(interaction, guild_config['delete_after'])
             return
         
         ydl_opts = {
@@ -865,7 +882,7 @@ class Music(commands.Cog):
         # 錯誤訊息以str形式回傳，以防型態不可分割問題
         if type(formatted_infos) is str:
             await interaction.followup.send(f"無法從 YouTube 播放清單匯入歌曲：{formatted_infos}", silent=True)
-            await delete_after_delay(interaction, self.delete_after)
+            await delete_after_delay(interaction, guild_config['delete_after'])
             return
         
         # 將所有影片添加到指定的歌單
@@ -887,16 +904,18 @@ class Music(commands.Cog):
         
         self.save_playlists(playlists)
         await interaction.followup.send(f"已將 {added_count} 首新歌加入到歌單 `{playlist_name}`。", silent=True)
-        await delete_after_delay(interaction, self.delete_after)
+        await delete_after_delay(interaction, guild_config['delete_after'])
 
 
     @app_commands.command(name="playlist_random", description="將所有已存在的音樂檔案隨機加入播放佇列")
     async def playlist_random(self, interaction: discord.Interaction):
         """將所有已存在的音樂檔案隨機加入播放佇列"""
+        guild_id = str(interaction.guild.id)
+        guild_config = self.get_music_config(guild_id)
         # 檢查使用者是否在語音頻道
         if interaction.user.voice is None:
             await interaction.response.send_message("請先加入一個語音頻道！", ephemeral=True, silent=True)
-            await delete_after_delay(interaction, self.delete_after)
+            await delete_after_delay(interaction, guild_config['delete_after'])
             return
 
         # 取得語音頻道並連接
@@ -914,12 +933,11 @@ class Music(commands.Cog):
 
         if not music_files:
             await interaction.response.send_message("沒有找到任何已下載的音樂文件。", silent=True)
-            await delete_after_delay(interaction, self.delete_after)
+            await delete_after_delay(interaction, guild_config['delete_after'])
             return
 
         # 將文件隨機打亂
         random.shuffle(music_files)
-        guild_id = str(interaction.guild.id)
         # 將隨機順序的文件加入播放佇列
         for file in music_files:
             formatted_info = file.rsplit(".", 1)[0]  # 文件名格式為 "id+title.mp3"
@@ -929,7 +947,7 @@ class Music(commands.Cog):
         # 如果沒有正在播放的歌曲，開始播放
         if not self.get_current_song_info(guild_id):
             await self.play_next(interaction)
-        await delete_after_delay(interaction, self.delete_after)
+        await delete_after_delay(interaction, guild_config['delete_after'])
     
     @app_commands.command(name="help_music", description="展示音樂機器人指令說明")
     async def help_music(self, interaction: discord.Interaction):
