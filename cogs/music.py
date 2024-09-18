@@ -982,7 +982,7 @@ class Music(commands.Cog):
         embed.set_thumbnail(url=interaction.user.avatar.url if interaction.user.avatar else interaction.user.default_avatar.url)
         
         add_command_field(embed, "/help_music", "展示這個指令說明。")
-        add_command_field(embed, "/set_config [music_volume] [delete_after]", "設定音樂機器人的配置")
+        add_command_field(embed, "/set_config [music_volume] [delete_after]", "設定音樂機器人的配置。")
         add_command_field(embed, "/join", "將機器人加到你現在的頻道。")
         add_command_field(embed, "/leave", "使機器人離開當前頻道。")
         add_command_field(embed, "/play [url]", "播放音樂或將音樂加入佇列。")
@@ -998,7 +998,7 @@ class Music(commands.Cog):
         add_command_field(embed, "/playlist_clear [playlist_name]", "清除用戶的指定歌單。")
         add_command_field(embed, "/playlist_show [user] [playlist_name]", "展示用戶的歌單。")
         add_command_field(embed, "/playlist_play [user] [playlist_name]", "播放用戶的歌單(隨機順序)。")
-        add_command_field(embed, "/playlist_import [playlist_url] [playlist_name] [length]", "從YouTube播放清單匯入所有(或是[length]首)歌曲至指定歌單")
+        add_command_field(embed, "/playlist_import [playlist_url] [playlist_name] [length]", "從YouTube播放清單匯入所有(或是[length]首)歌曲至指定歌單。")
         add_command_field(embed, "/playlist_random", "將所有已存在的音樂檔案隨機加入播放佇列。")
         
         embed.set_footer(text="如果沒辦法用，就是機器人不在線")
