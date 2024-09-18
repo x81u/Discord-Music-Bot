@@ -267,13 +267,19 @@ class Music(commands.Cog):
         
     async def play_next(self, interaction: discord.Interaction):
         """播放佇列中的下一首音樂"""
-        # 當佇列沒有音樂時
         guild_id = str(interaction.guild.id)
         guild_config = self.get_music_config(guild_id)
+        # 當佇列沒有音樂時
         if self.get_queue_len(guild_id) == 0:
+            if self.get_current_song_info(guild_id):
+                del self.current_song_info[guild_id]
             # 切換狀態回非播放音樂狀態
-            self.current_song_info[guild_id] = None
-            await self.bot.change_presence(activity=discord.Game(name="原神"))
+            if len(self.current_song_info) != 0:
+                text = f"正在 {len(self.current_song_info)} 個伺服器播放音樂"
+                await self.bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name=text))
+            else:
+                await self.bot.change_presence(activity=discord.Game(name="原神"))
+                
             await interaction.channel.send("佇列中沒有更多歌曲。", silent=True, delete_after=guild_config['delete_after'])
             return
 
@@ -313,11 +319,10 @@ class Music(commands.Cog):
                 return
             
             self.current_song_info[guild_id] = await future
-        song_info = self.get_current_song_info(guild_id)
-        title = song_info['title']
         print(f'\033[32mPlaying {title}\033[0m')
-        # 將discord狀態切換成現在播放音樂名稱
-        await self.bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name=title))
+        # 根據正在播放音樂的伺服器數量更改狀態
+        text = f"正在 {len(self.current_song_info)} 個伺服器播放音樂"
+        await self.bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name=text))
         
         # 計算音樂的平均音量
         avg_volume = calculate_average_volume(file_path)
@@ -333,9 +338,14 @@ class Music(commands.Cog):
             embed = self.create_current_embed(guild_id)
             await interaction.channel.send(embed=embed, delete_after=guild_config['delete_after'], silent=True)
         else:
+            if self.get_current_song_info(guild_id):
+                del self.current_song_info[guild_id]
             # 切換狀態回非播放音樂狀態
-            self.current_song_info[guild_id] = None
-            await self.bot.change_presence(activity=discord.Game(name="原神"))
+            if len(self.current_song_info) != 0:
+                text = f"正在 {len(self.current_song_info)} 個伺服器播放音樂"
+                await self.bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name=text))
+            else:
+                await self.bot.change_presence(activity=discord.Game(name="原神"))
             await interaction.channel.send("無法播放音樂，語音客戶端未連接到語音頻道。", silent=True, delete_after=guild_config['delete_after'])
 
     async def on_music_end(self, interaction, error):
@@ -585,7 +595,8 @@ class Music(commands.Cog):
         if interaction.guild.voice_client and interaction.guild.voice_client.is_playing():
             guild_id = str(interaction.guild.id)
             self.queue_dict[guild_id] = []
-            self.current_song_info[guild_id] = None
+            if self.get_current_song_info(guild_id):
+                del self.current_song_info[guild_id]
             interaction.guild.voice_client.stop()
             await interaction.response.send_message("音樂已停止播放。", silent=True)
         else:
