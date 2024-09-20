@@ -18,7 +18,9 @@
 pip install python-dotenv
 pip install discord.py
 pip install yt-dlp
+pip install pydub
 ```
+**運行時缺什麼就裝什麼**
 ### 2. 安裝 `ffmpeg` 並加入環境變數：
 **請自行google並用自己喜歡的方式安裝 `ffmpeg`**
 ### 3. 創建 `.env` 並文件並添加以下內容：
