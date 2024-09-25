@@ -74,7 +74,7 @@ def fetch_infos_concurrently_sync(video_urls):
     """多執行緒加速獲取多個音樂資訊"""
     def fetch_info(url):
         video_id = extract_video_id(url)
-        return fetch_detailed_music_info_noerror(video_id)  # 使用同步函數 fetch_detailed_music_info_noerror 取得資訊
+        return fetch_detailed_music_info(video_id, noerror=True)  # 使用同步函數 fetch_detailed_music_info_noerror 取得資訊
 
     # 使用多執行緒來加速
     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -83,33 +83,6 @@ def fetch_infos_concurrently_sync(video_urls):
     # 格式化結果資訊為{video_id}+{title}
     formatted_infos = [f"{info['id']}+{info['title']}" for info in results if info]
     return formatted_infos
-
-def fetch_detailed_music_info_noerror(video_id):
-    """獲取音樂的詳細資訊，如標題、上傳者和縮圖等，遇到例外情況將不會終止主線路(用於一次獲取大量音樂資訊)"""
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'quiet': True
-    }
-    
-    try:
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(video_id, download=False)
-    except Exception:
-        return
-    
-    # 返回詳細資訊，例如標題、上傳者和縮圖
-    print(f"\033[33mReturn the info of {info['title']}\033[0m")
-    return {
-        'id': info.get('id'),
-        'title': info.get('title'),
-        'uploader': info.get('uploader'),
-        'thumbnail': info.get('thumbnail'),
-        'duration': info.get('duration'),
-        'url': info.get('webpage_url'),
-        'view_count': info.get('view_count'),
-        'like_count': info.get('like_count'),
-        'uploader_url': info.get('uploader_url')
-    }
     
 def download_from_youtube(video_id):
     """獲取音樂的詳細資訊，如標題、上傳者和縮圖等，並下載音樂"""
@@ -160,7 +133,7 @@ def download_from_youtube(video_id):
     print(f"\033[33mReturn the downloaded info of {info['title']}\033[0m")
     return new_file_path, song_info
 
-def fetch_detailed_music_info(video_id):
+def fetch_detailed_music_info(video_id, noerror=False):
     """獲取音樂的詳細資訊，如標題、上傳者和縮圖等。"""
     ydl_opts = {
         'format': 'bestaudio/best',
@@ -171,8 +144,11 @@ def fetch_detailed_music_info(video_id):
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_id, download=False)
     except Exception as e:
-        # 錯誤訊息以str形式回傳，以防型態不可分割問題
-        return f"{e}"
+        if noerror:
+            return
+        else:
+            # 錯誤訊息以str形式回傳，以防型態不可分割問題
+            return f"{e}"
     
     # 返回詳細資訊，例如標題、上傳者和縮圖
     print(f"\033[33mReturn the info of {info['title']}\033[0m")
