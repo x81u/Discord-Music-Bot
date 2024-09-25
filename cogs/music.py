@@ -416,7 +416,7 @@ class Music(commands.Cog):
 
         await interaction.response.defer()
         
-        if '&list' in url:
+        if 'list' in url:
             loop = asyncio.get_running_loop()
             with concurrent.futures.ProcessPoolExecutor() as executor:
                 future = loop.run_in_executor(executor, youtube_dl_process, url, None)
