@@ -40,10 +40,14 @@ def get_file_path(video_id, title=None):
                 return f"downloads/{file_name}"
         return None
         
-def youtube_dl_process(playlist_url, ydl_opts, legnth):
+def youtube_dl_process(playlist_url, legnth):
     """處理 YoutubeDL 播放清單請求並格式化資訊"""
     try:
         # 使用 yt-dlp 提取播放清單中的所有影片 URL
+        ydl_opts = {
+            'extract_flat': 'in_playlist',  # 僅提取播放清單中的影片資訊
+            'quiet': True,
+        }
         with YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(playlist_url, download=False)
             
@@ -411,23 +415,41 @@ class Music(commands.Cog):
             await interaction.guild.voice_client.move_to(voice_channel)
 
         await interaction.response.defer()
-        # 添加音樂到佇列
-        video_id = extract_video_id(url)
-        # 使用 ProcessPoolExecutor 來執行多進程操作，來降低IO對主進程影響
-        loop = asyncio.get_running_loop()
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            future = loop.run_in_executor(executor, fetch_detailed_music_info, video_id)
-            info = await future
+        
+        if '&list' in url:
+            loop = asyncio.get_running_loop()
+            with concurrent.futures.ProcessPoolExecutor() as executor:
+                future = loop.run_in_executor(executor, youtube_dl_process, url, None)
+                formatted_infos = await future
             
-        # 錯誤訊息以str形式回傳，以防型態不可分割問題
-        if type(info) is str:
-            await interaction.followup.send(f"無法從 YouTube 匯入歌曲：{info}", silent=True)
-            await delete_after_delay(interaction, guild_config['delete_after'])
-            return
+            # 錯誤訊息以str形式回傳，以防型態不可分割問題
+            if type(formatted_infos) is str:
+                await interaction.followup.send(f"無法從 YouTube 播放清單匯入歌曲：{formatted_infos}", silent=True)
+                await delete_after_delay(interaction, guild_config['delete_after'])
+                return
+            
+            # 將所有歌曲加入佇列
+            for formatted_info in formatted_infos:
+                self.append_queue_dict(guild_id, formatted_info)
+        else:
+            # 添加音樂到佇列
+            video_id = extract_video_id(url)
+            # 使用 ProcessPoolExecutor 來執行多進程操作，來降低IO對主進程影響
+            loop = asyncio.get_running_loop()
+            with concurrent.futures.ProcessPoolExecutor() as executor:
+                future = loop.run_in_executor(executor, fetch_detailed_music_info, video_id)
+                info = await future
+                
+            # 錯誤訊息以str形式回傳，以防型態不可分割問題
+            if type(info) is str:
+                await interaction.followup.send(f"無法從 YouTube 匯入歌曲：{info}", silent=True)
+                await delete_after_delay(interaction, guild_config['delete_after'])
+                return
 
-        # 將 {video_id}+{title} 加入佇列
-        formatted_info = f"{info['id']}+{info['title']}"
-        self.append_queue_dict(guild_id, formatted_info)
+            # 將 {video_id}+{title} 加入佇列
+            formatted_info = f"{info['id']}+{info['title']}"
+            self.append_queue_dict(guild_id, formatted_info)
+            
         await interaction.followup.send(f"歌曲已加入佇列。當前佇列長度：{self.get_queue_len(guild_id)}", silent=True)
 
         # 如果目前沒有音樂播放，開始播放佇列
@@ -854,16 +876,12 @@ class Music(commands.Cog):
             await delete_after_delay(interaction, guild_config['delete_after'])
             return
         
-        ydl_opts = {
-            'extract_flat': 'in_playlist',  # 僅提取播放清單中的影片資訊
-            'quiet': True,
-        }
         
         await interaction.response.defer()
         # 使用 ProcessPoolExecutor 來執行多進程操作，來降低IO對主進程影響
         loop = asyncio.get_running_loop()
         with concurrent.futures.ProcessPoolExecutor() as executor:
-            future = loop.run_in_executor(executor, youtube_dl_process, playlist_url, ydl_opts, length)
+            future = loop.run_in_executor(executor, youtube_dl_process, playlist_url, length)
             formatted_infos = await future
         
         # 錯誤訊息以str形式回傳，以防型態不可分割問題
