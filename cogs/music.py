@@ -478,7 +478,7 @@ class Music(commands.Cog):
             embed.add_field(name="🎤 上傳者", value=f"**{song_info['uploader']}**", inline=True)
         embed.add_field(name="⏰ 時長", value=f"**{song_info['duration'] // 60}:{song_info['duration'] % 60:02d}**", inline=True)
         embed.add_field(name="🔥 播放量", value=f"**{song_info['view_count']:,}**", inline=True)
-        embed.add_field(name="👍 按讚數", value=f"**{song_info['like_count']:,}**", inline=True)
+        embed.add_field(name="👍 按讚數", value=f"**{song_info['like_count'] if song_info['like_count']!=None else -1:,}**", inline=True)
         
         embed.set_footer(text=f"資訊只會展示{guild_config['delete_after']}秒\n輸入/current 可重新展示")
         
