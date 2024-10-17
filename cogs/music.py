@@ -396,7 +396,7 @@ class Music(commands.Cog):
         await delete_after_delay(interaction, guild_config['delete_after'])
 
     @app_commands.command(name="play", description="播放音樂或將音樂加入佇列")
-    @app_commands.describe(url="'一首'歌曲的網址")
+    @app_commands.describe(url="歌曲或清單的網址")
     async def play(self, interaction: discord.Interaction, url: str):
         """播放音樂或將音樂加入佇列"""
         guild_id = str(interaction.guild.id)
